@@ -14,13 +14,14 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
   const [geoData, setGeoData] = useState<GeoJSONCollection | null>(null);
   
   // Configuration
-  const rotationSpeed = 0.2;
+  const rotationSpeed = 0.15; // Slightly slower for better control
 
   // State for interaction
   const [rotation, setRotation] = useState<[number, number, number]>([0, -30, 0]);
   const isDragging = useRef(false);
   const isHovering = useRef(false);
   const lastPos = useRef<[number, number]>([0, 0]);
+  const mousePos = useRef<[number, number]>([0, 0]); // Track mouse for tooltip
 
   // Load GeoJSON
   useEffect(() => {
@@ -55,12 +56,23 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
     if (!context) return;
     context.scale(dpr, dpr);
 
+    const sphereRadius = Math.min(width, height) / 2.5;
+
+    // Base Projection
     const projection = d3.geoOrthographic()
-      .scale(Math.min(width, height) / 2.5)
+      .scale(sphereRadius)
       .translate([width / 2, height / 2])
       .rotate(rotation);
 
     const path = d3.geoPath(projection, context);
+
+    // Pop-up Projection (Larger scale to simulate floating up)
+    const popProjection = d3.geoOrthographic()
+      .scale(sphereRadius * 1.05) // 5% larger for the pop effect
+      .translate([width / 2, height / 2])
+      .rotate(rotation);
+
+    const popPath = d3.geoPath(popProjection, context);
 
     const maxGDP = Math.max(...data.map(d => d.gdpTrillions), 10);
     const colorScale = d3.scaleSequential(d3.interpolateInferno)
@@ -69,50 +81,104 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
     const render = () => {
       context.clearRect(0, 0, width, height);
 
-      // Water / Background sphere
+      // 1. Water / Background sphere
       context.beginPath();
       path({ type: 'Sphere' });
       context.fillStyle = '#0f172a'; 
       context.fill();
       
-      // Grid
+      // 2. Grid
       context.beginPath();
       path(d3.geoGraticule10());
       context.strokeStyle = '#1e293b';
       context.lineWidth = 0.5;
       context.stroke();
 
-      // Countries
+      // 3. Render All Countries (Base Layer)
       geoData.features.forEach((feature: GeoJSONFeature) => {
         const countryCode = feature.id;
+        // Skip drawing the selected country on the base layer to prevent z-fighting/clipping visuals
+        if (selectedCountry?.isoCode === countryCode) return;
+
         const countryData = data.find(d => d.isoCode === countryCode);
-        const isSelected = selectedCountry?.isoCode === countryCode;
 
         context.beginPath();
         path(feature);
 
         if (countryData) {
-          context.fillStyle = isSelected ? '#38bdf8' : colorScale(countryData.gdpTrillions);
+          context.fillStyle = colorScale(countryData.gdpTrillions);
         } else {
           context.fillStyle = '#334155'; 
         }
         
         context.fill();
-        context.strokeStyle = isSelected ? '#ffffff' : '#0f172a';
-        context.lineWidth = isSelected ? 2 : 0.5;
+        context.strokeStyle = '#0f172a';
+        context.lineWidth = 0.5;
         context.stroke();
       });
 
-      // Atmosphere Glow
+      // 4. Atmosphere Glow
       const gradient = context.createRadialGradient(
-        width / 2, height / 2, projection.scale(),
-        width / 2, height / 2, projection.scale() * 1.2
+        width / 2, height / 2, sphereRadius,
+        width / 2, height / 2, sphereRadius * 1.2
       );
       gradient.addColorStop(0, 'rgba(56, 189, 248, 0.1)');
       gradient.addColorStop(1, 'rgba(0,0,0,0)');
       
       context.fillStyle = gradient;
       context.fillRect(0, 0, width, height);
+
+      // 5. Render Selected Country "Floating" on top
+      if (selectedCountry) {
+        const feature = geoData.features.find(f => f.id === selectedCountry.isoCode);
+        if (feature) {
+          // Add Drop Shadow for depth
+          context.save();
+          context.shadowColor = 'rgba(0, 0, 0, 0.8)';
+          context.shadowBlur = 20;
+          context.shadowOffsetX = 0;
+          context.shadowOffsetY = 0;
+
+          context.beginPath();
+          // Use popPath (scaled up) for the floating effect
+          popPath(feature); 
+          
+          context.fillStyle = '#38bdf8'; // Bright Blue Highlight
+          context.fill();
+          
+          context.lineWidth = 2;
+          context.strokeStyle = '#ffffff';
+          context.stroke();
+          
+          context.restore();
+        }
+      }
+
+      // 6. Draw Cursor Tooltip if hovering
+      if (isHovering.current && selectedCountry) {
+         // Simple tooltip near mouse
+         const [mx, my] = mousePos.current;
+         const padding = 8;
+         const text = `${selectedCountry.countryName}`;
+         const metrics = context.measureText(text);
+         const tw = metrics.width;
+         
+         context.save();
+         context.font = "12px sans-serif";
+         context.fillStyle = "rgba(15, 23, 42, 0.9)";
+         context.strokeStyle = "rgba(56, 189, 248, 0.5)";
+         
+         // Draw tooltip background
+         context.beginPath();
+         context.roundRect(mx + 15, my + 15, tw + padding * 2, 24, 4);
+         context.fill();
+         context.stroke();
+         
+         // Draw text
+         context.fillStyle = "#ffffff";
+         context.fillText(text, mx + 15 + padding, my + 15 + 16);
+         context.restore();
+      }
     };
 
     render();
@@ -133,7 +199,7 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
     };
     animate();
     return () => cancelAnimationFrame(animationFrameId);
-  }, []); // Dependencies empty to run continuously without resetting on props change
+  }, []); 
 
 
   // Interaction Handlers
@@ -143,6 +209,12 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    // Update mouse position for tooltip
+    if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        mousePos.current = [e.clientX - rect.left, e.clientY - rect.top];
+    }
+
     // 1. Rotation Dragging
     if (isDragging.current) {
       const [x, y] = [e.clientX, e.clientY];
@@ -159,8 +231,6 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
 
     if (!containerRef.current || !geoData) return;
 
-    // Reconstruct projection for hit-testing
-    // Must match the render logic exactly
     const width = containerRef.current.clientWidth;
     const height = containerRef.current.clientHeight;
     
@@ -170,9 +240,7 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
       .rotate(rotation);
 
     // Calculate mouse position relative to the container
-    const rect = containerRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const [mouseX, mouseY] = mousePos.current;
 
     // Invert pixel coordinates to [longitude, latitude]
     const invert = projection.invert([mouseX, mouseY]);
@@ -181,14 +249,17 @@ const Globe: React.FC<GlobeProps> = ({ data, onSelectCountry, selectedCountry })
       const [lng, lat] = invert;
       
       // Find the country feature containing this coordinate
+      // geoContains is computationally intensive for complex polygons, but usually ok for world map interaction
       const found = geoData.features.find(feature => d3.geoContains(feature, [lng, lat]));
 
       if (found) {
         const country = data.find(c => c.isoCode === found.id);
-        // Update selection if it's a known country and different from current
         if (country && country.isoCode !== selectedCountry?.isoCode) {
           onSelectCountry(country);
         }
+      } else {
+         // Optional: Deselect if clicking/hovering ocean? 
+         // For now, keeping last selection is often better UX to read data.
       }
     }
   };

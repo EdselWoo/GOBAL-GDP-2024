@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { GDPData } from '../types';
 
 interface InfoPanelProps {
@@ -22,7 +22,8 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ data, selectedCountry, onSelectCo
     );
   }
 
-  const chartData = data.slice(0, 10).map(d => ({
+  // Show top 15 in chart to utilize space better with more data
+  const chartData = data.slice(0, 15).map(d => ({
     name: d.isoCode,
     gdp: d.gdpTrillions,
     full: d
@@ -37,18 +38,18 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ data, selectedCountry, onSelectCo
       </div>
 
       {/* Chart */}
-      <div className="h-64 w-full bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+      <div className="h-80 w-full bg-slate-800/50 rounded-xl p-4 border border-slate-700 flex-shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 10, top: 0, bottom: 0 }}>
             <XAxis type="number" hide />
-            <YAxis dataKey="name" type="category" tick={{ fill: '#94a3b8', fontSize: 12 }} width={35} />
+            <YAxis dataKey="name" type="category" tick={{ fill: '#94a3b8', fontSize: 11 }} width={30} />
             <Tooltip 
               cursor={{ fill: 'rgba(255,255,255,0.05)' }}
               contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9' }}
               itemStyle={{ color: '#38bdf8' }}
               formatter={(value: number) => [`$${value}T`, 'GDP']}
             />
-            <Bar dataKey="gdp" radius={[0, 4, 4, 0]} barSize={16}>
+            <Bar dataKey="gdp" radius={[0, 4, 4, 0]} barSize={12}>
               {chartData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
@@ -64,7 +65,7 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ data, selectedCountry, onSelectCo
 
       {/* Selected Country Details */}
       {selectedCountry ? (
-        <div className="bg-slate-800/80 rounded-xl p-6 border border-blue-500/30 shadow-[0_0_15px_rgba(56,189,248,0.15)] backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <div className="bg-slate-800/80 rounded-xl p-6 border border-blue-500/30 shadow-[0_0_15px_rgba(56,189,248,0.15)] backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 duration-300 flex-shrink-0">
           <div className="flex justify-between items-start mb-4">
             <div>
               <h3 className="text-3xl font-bold text-white">{selectedCountry.countryName}</h3>
@@ -94,14 +95,14 @@ const InfoPanel: React.FC<InfoPanelProps> = ({ data, selectedCountry, onSelectCo
           </p>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-slate-500 text-sm text-center border-2 border-dashed border-slate-800 rounded-xl">
+        <div className="flex-1 flex items-center justify-center text-slate-500 text-sm text-center border-2 border-dashed border-slate-800 rounded-xl min-h-[200px]">
           Select a country from the list<br/>or map to view details
         </div>
       )}
 
       {/* Country List */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3">Full List</h3>
+        <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 sticky top-0 bg-slate-900 py-2 z-10">Full List ({data.length})</h3>
         <div className="flex-1 overflow-y-auto pr-2 space-y-2">
           {data.map((country) => (
             <button
