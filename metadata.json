@@ -1,0 +1,5 @@
+{
+  "name": "Global GDP 3D Visualizer",
+  "description": "An interactive 3D globe visualization displaying estimated 2024 GDP data for countries worldwide, powered by Gemini 2.5 Flash and D3.js.",
+  "requestFramePermissions": []
+}
